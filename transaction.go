@@ -65,24 +65,32 @@ func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transac
 
 	for _, vin := range tx.Vin {
 		if prevTXs[hex.EncodeToString(vin.Txid)].ID == nil {
-			log.Panic("ERROR: 前面的交易不正确")
+			log.Panic("ERROR: 引用的输出的交易不正确")
 		}
 	}
 
-	//将会被签署的是修剪后的当前交易的交易副本，而不是一个完整交易：
+	//将会被签署的是修剪后的当前交易的交易副本，而不是一个完整交易
+	//txCopy拥有当前交易的全部输出数据和部分输入数据
 	txCopy := tx.TrimmedCopy()
 
-	//迭代副本中的每一个输入
+	//迭代副本中的每一个输入，分别进行签名
 	for inID, vin := range txCopy.Vin {
 		prevTx := prevTXs[hex.EncodeToString(vin.Txid)]
 		//在每个输入中，`Signature`被设置为`nil`(Signature仅仅是一个双重检验，所以没有必要放进来)
+		//实际上，在构建交易时候，计算交易ID时，Signature也是nil（设置交易ID是在对交易进行签名前完成）
+		//这里也是为计算交易副本的ID，所以Signature也设置为nil
 		txCopy.Vin[inID].Signature = nil
-		//`pubKey`被设置为所引用输出的`PubKeyHash`
-		txCopy.Vin[inID].PubKey = prevTx.Vout[vin.Vout].PubKeyHash
-		txCopy.ID = txCopy.Hash()
-		txCopy.Vin[inID].PubKey = nil
 
-		///签名的是交易副本的ID（即交易副本的哈希）
+		//输入中的`pubKey`被设置为所引用输出的`PubKeyHash`（注意，不是原生态公钥）
+		//虽然在我们的例子中，每一个输入的prevTx.Vout[vin.Vout].PubKeyHash都会相同(自己挖矿，包含的交易都是自己发起的）
+		//，但是比特币允许交易包含引用了不同地址的输入（即来自不同地址发起的交易），所以这里仍然这么做（每一个输入分开签名）
+		//实际上，是将输入的PubKey从自己钱包的PubKey替换为该输入引用输出索引对应的交易的PubKeyHash
+		txCopy.Vin[inID].PubKey = prevTx.Vout[vin.Vout].PubKeyHash
+		txCopy.ID = txCopy.Hash() //计算出交易副本的ID，这个ID与tx.ID显然是不同的
+
+		txCopy.Vin[inID].PubKey = nil //将输入中的PubKey设为nil，下次迭代时候用
+
+		///签名的是交易副本的ID
 		r, s, err := ecdsa.Sign(rand.Reader, &privKey, txCopy.ID)
 		if err != nil {
 			log.Panic(err)
@@ -120,7 +128,8 @@ func (tx Transaction) String() string {
 	return strings.Join(lines, "\n")
 }
 
-// TrimmedCopy 创建一个修剪后的交易副本，用于签名用
+// TrimmedCopy 创建一个修剪后的交易副本（深度拷贝的副本），用于签名用
+//由于TrimmedCopy是在tx签名前执行，实际上修剪只是在tx基础上，将输入Vin中的每一个vin的PubKey置为nil
 func (tx *Transaction) TrimmedCopy() Transaction {
 	var inputs []TxInput
 	var outputs []TxOutput
@@ -141,6 +150,7 @@ func (tx *Transaction) TrimmedCopy() Transaction {
 }
 
 // Verify 校验所有交易输入的签名
+//私钥签名，公钥验证
 func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 	if tx.IsCoinbase() {
 		return true
@@ -155,7 +165,7 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 	txCopy := tx.TrimmedCopy() //同一笔交易的副本
 	curve := elliptic.P256()   //生成密钥对的椭圆曲线
 
-	////迭代每个输入
+	//迭代每个输入
 	for inID, vin := range tx.Vin {
 		//以下代码跟签名一样，因为在验证阶段，我们需要的是与签名相同的数据
 		prevTx := prevTXs[hex.EncodeToString(vin.Txid)]
@@ -165,6 +175,7 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 		txCopy.Vin[inID].PubKey = nil
 
 		//解包存储在`TXInput.Signature`和`TXInput.PubKey`中的值
+
 		//一个签名就是一对长度相同的数字。
 		r := big.Int{}
 		s := big.Int{}
@@ -172,14 +183,13 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 		r.SetBytes(vin.Signature[:(sigLen / 2)])
 		s.SetBytes(vin.Signature[(sigLen / 2):])
 
-		//一个公钥（输入提取的公钥）就是一对长度相同的坐标。
+		//从输入中直接取出公钥数组，解析为一对长度相同的坐标
 		x := big.Int{}
 		y := big.Int{}
-		keyLen := len(vin.PubKey)
+		keyLen := len(vin.PubKey) //vin.PubKey为原生态公钥数组
 		x.SetBytes(vin.PubKey[:(keyLen / 2)])
 		y.SetBytes(vin.PubKey[(keyLen / 2):])
-
-		//从输入提取的公钥创建一个rawPubKey
+		//从解析的坐标创建一个rawPubKey（原生态公钥）
 		rawPubKey := ecdsa.PublicKey{Curve: curve, X: &x, Y: &y}
 
 		//使用公钥验证副本的签名，是否私钥签名档结果一致（&r和&s是私钥签名txCopy.ID的结果）
@@ -252,8 +262,8 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transactio
 	}
 
 	tx := Transaction{nil, inputs, outputs}    //初始交易ID设为nil
-	tx.ID = tx.Hash()                          //紧接着设置交易的ID
-	bc.SignTransaction(&tx, wallet.PrivateKey) //利用私钥对交易进行签名
+	tx.ID = tx.Hash()                          //紧接着设置交易的ID，计算交易ID时候，还没对交易进行签名（即签名字段Signature=nil)
+	bc.SignTransaction(&tx, wallet.PrivateKey) //利用私钥对交易进行签名，实际上是对交易中的每一个输入进行签名
 
 	return &tx
 }

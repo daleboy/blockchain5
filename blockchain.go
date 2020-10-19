@@ -295,12 +295,13 @@ func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
 	return Transaction{}, errors.New("未找到交易")
 }
 
-// SignTransaction 对一个交易的所有输入进行签名
+// SignTransaction 对一个交易的所有输入引用的输出的交易进行签名
+//注意，这里签名的不是参数tx（当前交易），而是tx输入所引用的输出的交易
 func (bc *Blockchain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
 	prevTXs := make(map[string]Transaction)
 
 	for _, vin := range tx.Vin {
-		prevTX, err := bc.FindTransaction(vin.Txid)
+		prevTX, err := bc.FindTransaction(vin.Txid) //通过交易输入引用的输出交易ID获得输出交易
 		if err != nil {
 			log.Panic(err)
 		}

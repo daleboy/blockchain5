@@ -77,11 +77,14 @@ func checksum(payload []byte) []byte {
 
 //newKeyPair 产生公钥私钥对
 func newKeyPair() (ecdsa.PrivateKey, []byte) {
-	curve := elliptic.P256()
-	private, err := ecdsa.GenerateKey(curve, rand.Reader)
+	curve := elliptic.P256()                              //ECDSA基于椭圆曲线，所以我们需要一个椭圆曲线
+	private, err := ecdsa.GenerateKey(curve, rand.Reader) //产生私钥
 	if err != nil {
 		log.Panic(err)
 	}
+
+	//从私钥生成一个公钥
+	//在基于椭圆曲线的算法中，公钥是曲线上的点，因此，公钥是 X，Y 坐标的组合
 	pubKey := append(private.PublicKey.X.Bytes(), private.PublicKey.Y.Bytes()...)
 
 	return *private, pubKey

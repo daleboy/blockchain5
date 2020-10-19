@@ -6,7 +6,7 @@ import "bytes"
 type TxOutput struct {
 	Value int //输出里面存储的“币”
 
-	//锁定输出公钥（比特币里面是一个脚本，这里是公钥）
+	//锁定输出的公钥（比特币里面是一个脚本，这里是公钥）
 	PubKeyHash []byte
 }
 
@@ -25,8 +25,8 @@ func (out *TxOutput) IsLockedWithKey(pubKeyHash []byte) bool {
 // NewTxOutput 创建一个新的 TXOutput
 //注意，这里需要将address进行反编码成实际的地址
 func NewTxOutput(value int, address string) *TxOutput {
-	txo := &TxOutput{value, nil}
-	txo.Lock([]byte(address))
+	txo := &TxOutput{value, nil} //构建TxOutput，PubKeyHash暂设为nil
+	txo.Lock([]byte(address))    //接着设定TxOutput的PubKeyHash值
 
 	return txo
 }
