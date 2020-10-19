@@ -13,9 +13,9 @@ type CLI struct{}
 //printUsage 打印命令行帮助信息
 func (cli *CLI) printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("   createblockchain -address ADDRESS - 创建一个新的区块链并发送创始区块奖励给到address")
+	fmt.Println("   createblockchain -address ADDRESS - 创建一个新的区块链并发送创始区块奖励给到ADDRESS")
 	fmt.Println("   createwallet - 创建一个新的钥匙对并存储到钱包文件中")
-	fmt.Println("   getbalance -address ADDRESS  - 获得某个地址的余额")
+	fmt.Println("   getbalance -address ADDRESS  - 获得地址ADDRESS的余额")
 	fmt.Println("   listaddresses - 列出钱包文件中的所有钱包地址")
 	fmt.Println("   printchain - 打印区块链中的所有区块")
 	fmt.Println("   send -from FROM -to To -amount - 发送amount数量的币，从地址FROM到TO")

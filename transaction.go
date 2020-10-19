@@ -65,7 +65,7 @@ func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transac
 
 	for _, vin := range tx.Vin {
 		if prevTXs[hex.EncodeToString(vin.Txid)].ID == nil {
-			log.Panic("ERROR: Previous transaction is not correct")
+			log.Panic("ERROR: 前面的交易不正确")
 		}
 	}
 
@@ -114,7 +114,7 @@ func (tx Transaction) String() string {
 	for i, output := range tx.Vout {
 		lines = append(lines, fmt.Sprintf("     Output %d:", i))
 		lines = append(lines, fmt.Sprintf("       Value:  %d", output.Value))
-		lines = append(lines, fmt.Sprintf("       Script: %x", output.PubKeyHash))
+		lines = append(lines, fmt.Sprintf("       PubKeyHash: %x", output.PubKeyHash))
 	}
 
 	return strings.Join(lines, "\n")
@@ -191,7 +191,7 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 	return true
 }
 
-//NewCoinbaseTX 创建一个区块链创始交易
+//NewCoinbaseTX 创建一个区块链创始交易，不需要签名
 func NewCoinbaseTX(to, data string) *Transaction {
 	if data == "" {
 		data = fmt.Sprintf("奖励给%s", to) //fmt.Sprintf将数据格式化后赋值给变量data
@@ -199,13 +199,15 @@ func NewCoinbaseTX(to, data string) *Transaction {
 
 	//初始交易输入结构：引用输出的交易为空:引用交易的ID为空，交易输出值为设为-1
 	txin := TxInput{[]byte{}, -1, nil, []byte(data)}
-	txout := TxOutput{subsidy, []byte(to)}                     //本次交易的输出结构：奖励值为subsidy，奖励给地址to（当然也只有地址to可以解锁使用这笔钱）
-	tx := Transaction{nil, []TxInput{txin}, []TxOutput{txout}} //交易ID设为nil
+	txout := NewTxOutput(subsidy, to)                           //本次交易的输出结构：奖励值为subsidy，奖励给地址to（当然也只有地址to可以解锁使用这笔钱）
+	tx := Transaction{nil, []TxInput{txin}, []TxOutput{*txout}} //交易ID设为nil
+	tx.ID = tx.Hash()
 
 	return &tx
 }
 
-//NewUTXOTransaction 创建一个资金转移交易
+//NewUTXOTransaction 创建一个资金转移交易并签名（对输入签名）
+//from、to均为Base58的地址字符串
 func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transaction {
 	var inputs []TxInput
 	var outputs []TxOutput
@@ -215,10 +217,14 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transactio
 		log.Panic(err)
 	}
 
-	wallet := wallets.GetWallet(from)
+	wallet := wallets.GetWallet(from) //获得发送者的钱包
+
+	//计算出发送者公钥的哈希
+	//一般除了签名和校验签名的情形下要用到私钥，在其他情形下，都只会用到公钥或公钥的哈希
 	pubKeyHash := HashPubKey(wallet.PublicKey)
+
 	//validOutputs为sender为此交易提供的输出，不一定是sender的全部输出
-	//acc为sender发出的全部币数
+	//acc为sender发出的全部币数，不一定是sender的全部可用币
 	acc, validOutputs := bc.FindSpendableOutput(pubKeyHash, amount)
 
 	if acc < amount {
@@ -227,26 +233,27 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transactio
 
 	//构建输入参数（列表）
 	for txid, outs := range validOutputs {
-		txID, err := hex.DecodeString(txid)
+		txID, err := hex.DecodeString(txid) //字符串反编码为二进制数组
 		if err != nil {
 			log.Panic(err)
 		}
 
 		for _, out := range outs {
-			input := TxInput{txID, out, nil, wallet.PublicKey}
+			input := TxInput{txID, out, nil, wallet.PublicKey} //输入暂时还没有签名
 			inputs = append(inputs, input)
 		}
 
 	}
 
-	//构建输出参数（列表）
-	outputs = append(outputs, TxOutput{amount, []byte(to)})
+	//构建输出参数（列表），注意，to地址要反编码成实际地址
+	outputs = append(outputs, *NewTxOutput(amount, to))
 	if acc > amount {
-		outputs = append(outputs, TxOutput{acc - amount, []byte(from)}) //找零，退给sender
+		outputs = append(outputs, *NewTxOutput(acc-amount, from)) //找零，退给sender
 	}
 
-	tx := Transaction{nil, inputs, outputs} //初始交易ID设为nil
-	tx.ID = tx.Hash()                       //紧接着设置交易的ID
+	tx := Transaction{nil, inputs, outputs}    //初始交易ID设为nil
+	tx.ID = tx.Hash()                          //紧接着设置交易的ID
+	bc.SignTransaction(&tx, wallet.PrivateKey) //利用私钥对交易进行签名
 
 	return &tx
 }

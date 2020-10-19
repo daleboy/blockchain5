@@ -35,7 +35,7 @@ func (ws *Wallets) CreateWallet() string {
 	return address
 }
 
-// GetAddresses 从钱包文件中返回地址数组
+// GetAddresses 从钱包文件中返回所有钱包地址
 func (ws *Wallets) GetAddresses() []string {
 	var addresses []string
 

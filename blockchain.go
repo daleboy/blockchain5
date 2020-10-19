@@ -1,7 +1,10 @@
 package blockchain5
 
 import (
+	"bytes"
+	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -25,7 +28,15 @@ type Blockchain struct {
 //MineBlock 挖出普通区块并将新区块加入到区块链中
 //此方法通过区块链的指针调用，将修改区块链bc的内容
 func (bc *Blockchain) MineBlock(transactions []*Transaction) {
-	var lastHash []byte                         //区块链最后一个区块的哈希
+	var lastHash []byte //区块链最后一个区块的哈希
+
+	//在将交易放入块之前进行签名验证
+	for _, tx := range transactions {
+		if bc.VerifyTransaction(tx) != true {
+			log.Panic("ERROR: 非法交易")
+		}
+	}
+
 	err := bc.Db.View(func(tx *bolt.Tx) error { //只读打开，读取最后一个区块的哈希，作为新区块的prevHash
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash = b.Get([]byte("1")) //最后一个区块的哈希的键是字符串"1"
@@ -261,4 +272,55 @@ Work:
 	}
 
 	return accumulated, unpsentOutputs
+}
+
+// FindTransaction 根据交易ID查询到一个交易
+func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
+	bci := bc.Iterator()
+
+	for {
+		block := bci.Next()
+
+		for _, tx := range block.Transactions {
+			if bytes.Compare(tx.ID, ID) == 0 {
+				return *tx, nil
+			}
+		}
+
+		if len(block.PrevBlockHash) == 0 {
+			break
+		}
+	}
+
+	return Transaction{}, errors.New("未找到交易")
+}
+
+// SignTransaction 对一个交易的所有输入进行签名
+func (bc *Blockchain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
+	prevTXs := make(map[string]Transaction)
+
+	for _, vin := range tx.Vin {
+		prevTX, err := bc.FindTransaction(vin.Txid)
+		if err != nil {
+			log.Panic(err)
+		}
+		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
+	}
+
+	tx.Sign(privKey, prevTXs)
+}
+
+// VerifyTransaction 验证一个交易的所有输入的签名
+func (bc *Blockchain) VerifyTransaction(tx *Transaction) bool {
+	prevTXs := make(map[string]Transaction)
+
+	for _, vin := range tx.Vin {
+		prevTX, err := bc.FindTransaction(vin.Txid)
+		if err != nil {
+			log.Panic(err)
+		}
+		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
+	}
+
+	return tx.Verify(prevTXs)
 }

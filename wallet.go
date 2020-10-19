@@ -11,8 +11,8 @@ import (
 	"golang.org/x/crypto/ripemd160"
 )
 
-const version = byte(0x00)
-const walletFile = "wallet.dat"
+const version = byte(0x00)      //钱包版本，一个字节
+const walletFile = "wallet.dat" //钱包文件
 const addressChecksumLen = 4
 
 //Wallet 钱包保存公钥和私钥对

@@ -10,7 +10,7 @@ type TxOutput struct {
 	PubKeyHash []byte
 }
 
-// Lock 对输出签名，锁定
+// Lock 对输出锁定，即反编码address后，获得实际的公钥哈希
 func (out *TxOutput) Lock(address []byte) {
 	pubKeyHash := Base58Decode(address)
 	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
@@ -23,6 +23,7 @@ func (out *TxOutput) IsLockedWithKey(pubKeyHash []byte) bool {
 }
 
 // NewTxOutput 创建一个新的 TXOutput
+//注意，这里需要将address进行反编码成实际的地址
 func NewTxOutput(value int, address string) *TxOutput {
 	txo := &TxOutput{value, nil}
 	txo.Lock([]byte(address))

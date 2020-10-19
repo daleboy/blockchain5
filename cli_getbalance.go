@@ -8,7 +8,7 @@ import (
 //GetBalance 获得账号余额
 func (cli *CLI) getBalance(address string) {
 	if !ValidateAddress(address) {
-		log.Panic("ERROR: Address is not valid")
+		log.Panic("ERROR: 地址非法")
 	}
 	bc := NewBlockchain()
 	defer bc.Db.Close()
