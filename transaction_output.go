@@ -13,7 +13,7 @@ type TxOutput struct {
 // Lock 对输出锁定，即反编码address后，获得实际的公钥哈希
 func (out *TxOutput) Lock(address []byte) {
 	expubKeyHash := Base58Decode(address)
-	pubKeyHash: = expubKeyHash[1 : len(expubKeyHash)-4]
+	pubKeyHash := expubKeyHash[1 : len(expubKeyHash)-4]
 	out.PubKeyHash = pubKeyHash
 }
 
